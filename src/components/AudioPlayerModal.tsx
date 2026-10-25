@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Dimensions, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
 import { useAudioPlayback } from './AudioPlaybackProvider';
+import { AudioArtworkImage } from './AudioArtwork';
+
+const { width } = Dimensions.get('window');
+const ARTWORK_SIZE = width - 48;
 
 interface AudioPlayerModalProps {
   visible: boolean;
@@ -15,51 +19,62 @@ const formatDuration = (seconds: number) => {
 };
 
 export default function AudioPlayerModal({ visible, onClose }: AudioPlayerModalProps) {
-  // Use your new provider values directly! No more intervals needed.
-  const { activeMedia, currentTime, duration, isPlaying, togglePlayback, seekTo } = useAudioPlayback();
+  const { 
+    activeMedia, currentTime, duration, isPlaying, 
+    togglePlayback, seekTo, skipToNext, skipToPrevious,
+    isShuffle, repeatMode, toggleShuffle, toggleRepeat 
+  } = useAudioPlayback();
   
   const [isSeeking, setIsSeeking] = useState(false);
   const [seekTime, setSeekTime] = useState(0);
 
   if (!activeMedia) return null;
 
-  // If the user is dragging the slider, show where they are dragging. Otherwise, show actual time.
   const displayTime = isSeeking ? seekTime : currentTime;
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <SafeAreaView style={styles.modalContainer} edges={['top', 'bottom']}>
         
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerLabel}>Now Playing</Text>
+<View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Text style={styles.closeIcon}>⌄</Text>
+            <Image 
+              source={require('@/assets/images/tabIcons/arrowd.png')} 
+              style={styles.headerIconImage} 
+              resizeMode="contain" 
+            />
           </TouchableOpacity>
+          <Text style={styles.headerLabel}>Playing from your library</Text>
+          <View style={styles.headerSpacer} />
         </View>
         
         <View style={styles.content}>
-          {/* Beautiful Placeholder Artwork */}
+          
           <View style={styles.artworkContainer}>
-            <View style={styles.artworkPlaceholder}>
-              <Text style={styles.artworkIcon}>🎵</Text>
+            <AudioArtworkImage uri={activeMedia.uri} size={ARTWORK_SIZE} style={styles.artworkImage} />
+          </View>
+
+          <View style={styles.infoRow}>
+            <View style={styles.textColumn}>
+              <Text style={styles.title} numberOfLines={1}>{activeMedia.title}</Text>
+              <Text style={styles.artist} numberOfLines={1}>{activeMedia.artist || 'Unknown Artist'}</Text>
             </View>
+            <TouchableOpacity style={styles.actionButton}>
+              <Image 
+                source={require('@/assets/images/tabIcons/like.png')} 
+                style={styles.actionIconImage} 
+                resizeMode="contain" 
+              />
+            </TouchableOpacity>
           </View>
 
-          {/* Track Info */}
-          <View style={styles.infoContainer}>
-            <Text style={styles.title} numberOfLines={1}>{activeMedia.title}</Text>
-            <Text style={styles.artist} numberOfLines={1}>{activeMedia.artist || 'Unknown Artist'}</Text>
-          </View>
-
-          {/* Premium Timeline Slider */}
           <View style={styles.progressContainer}>
             <Slider
               style={styles.slider}
               minimumValue={0}
               maximumValue={duration > 0 ? duration : 1}
               value={displayTime}
-              minimumTrackTintColor="#4F46E5"
+              minimumTrackTintColor="#FFFFFF"
               maximumTrackTintColor="rgba(255,255,255,0.2)"
               thumbTintColor="#FFFFFF"
               onSlidingStart={() => {
@@ -74,50 +89,111 @@ export default function AudioPlayerModal({ visible, onClose }: AudioPlayerModalP
             />
             <View style={styles.timeRow}>
               <Text style={styles.timeText}>{formatDuration(displayTime)}</Text>
-              <Text style={styles.timeText}>-{formatDuration(duration - displayTime)}</Text>
+              <Text style={styles.timeText}>{formatDuration(duration)}</Text> 
             </View>
           </View>
 
-          {/* Main Controls */}
-          <View style={styles.controlsContainer}>
-            <TouchableOpacity 
-              onPress={togglePlayback} 
-              style={styles.playPauseBtn}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.playPauseIcon}>{isPlaying ? '⏸' : '▶'}</Text>
+          {/* Controls Row with Custom Images */}
+          <View style={styles.controlsRow}>
+            {/* Shuffle Button */}
+            <TouchableOpacity onPress={toggleShuffle} style={[styles.secondaryBtn, isShuffle && styles.activeBtn]}>
+              <Image 
+                source={require('@/assets/images/tabIcons/shuffle.png')} 
+                style={styles.secondaryIconImage} 
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+
+           {/* Skip Back */}
+            <TouchableOpacity onPress={skipToPrevious} style={styles.primaryBtn}>
+              <Image 
+                source={require('@/assets/images/tabIcons/next.png')} 
+                style={[styles.primaryIconImage, { transform: [{ rotate: '180deg' }] }]} 
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={togglePlayback} style={styles.playPauseBtn} activeOpacity={0.8}>
+              <Image 
+                source={isPlaying ? require('@/assets/images/tabIcons/pause.png') : require('@/assets/images/tabIcons/play.png')} 
+                style={styles.playPauseImage} 
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+
+            {/* Skip Forward */}
+            <TouchableOpacity onPress={skipToNext} style={styles.primaryBtn}>
+              <Image 
+                source={require('@/assets/images/tabIcons/next.png')} 
+                style={styles.primaryIconImage} 
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+
+            {/* Repeat Button */}
+            <TouchableOpacity onPress={toggleRepeat} style={[styles.secondaryBtn, repeatMode !== 'off' && styles.activeBtn]}>
+              <View>
+                <Image 
+                  source={require('@/assets/images/tabIcons/repeat.png')} 
+                  style={styles.secondaryIconImage} 
+                  resizeMode="contain"
+                />
+                {/* Tiny badge for "Repeat One" state */}
+                {repeatMode === 'one' && (
+                  <View style={styles.repeatOneBadge}>
+                    <Text style={styles.repeatOneText}>1</Text>
+                  </View>
+                )}
+              </View>
             </TouchableOpacity>
           </View>
-        </View>
 
+        </View>
       </SafeAreaView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  modalContainer: { flex: 1, backgroundColor: '#0F172A' },
-  header: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 20, position: 'relative' },
-  headerLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5 },
-  closeButton: { position: 'absolute', top: 12, right: 20, width: 40, height: 40, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 20 },
-  closeIcon: { color: '#FFF', fontSize: 28, fontWeight: '300', marginTop: -8 },
-  
-  content: { flex: 1, paddingHorizontal: 32, justifyContent: 'center', paddingBottom: 40 },
-  
-  artworkContainer: { width: '100%', aspectRatio: 1, marginBottom: 40, shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.4, shadowRadius: 30, elevation: 15 },
-  artworkPlaceholder: { flex: 1, backgroundColor: '#1E293B', borderRadius: 24, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  artworkIcon: { fontSize: 80 },
+  modalContainer: { flex: 1, backgroundColor: '#030303' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 10, paddingBottom: 20 },
+  closeButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'flex-start' },
+headerIconImage: { width: 28, height: 28, tintColor: '#FFFFFF' }, // <-- Added this
+  headerLabel: { color: '#AAAAAA', fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, textAlign: 'center' },
+  headerSpacer: { width: 40 }, 
 
-  infoContainer: { alignItems: 'flex-start', marginBottom: 30 },
-  title: { color: '#FFF', fontSize: 28, fontWeight: '800', marginBottom: 8, letterSpacing: -0.5 },
-  artist: { color: '#94A3B8', fontSize: 18, fontWeight: '500' },
+  content: { flex: 1, paddingHorizontal: 24, paddingBottom: 40, justifyContent: 'space-between' },
+  
+  artworkContainer: { width: '100%', alignItems: 'center', marginBottom: 30, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 15 },
+  artworkImage: { width: ARTWORK_SIZE, height: ARTWORK_SIZE, borderRadius: 8 }, 
 
-  progressContainer: { marginBottom: 30 },
+  infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 25 },
+  textColumn: { flex: 1, paddingRight: 20 },
+  title: { color: '#FFFFFF', fontSize: 26, fontWeight: '800', marginBottom: 4, letterSpacing: -0.5 },
+  artist: { color: '#AAAAAA', fontSize: 18, fontWeight: '500' },
+  actionButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'flex-end' },
+actionIconImage: { width: 26, height: 26, tintColor: '#FFFFFF' }, // <-- Added this
+
+  progressContainer: { marginBottom: 20 },
   slider: { width: '100%', height: 40, marginHorizontal: 0 },
-  timeRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 },
-  timeText: { color: '#64748B', fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  timeRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 2, marginTop: -10 },
+  timeText: { color: '#AAAAAA', fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] },
 
-  controlsContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
-  playPauseBtn: { width: 88, height: 88, borderRadius: 44, backgroundColor: '#4F46E5', justifyContent: 'center', alignItems: 'center', shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.4, shadowRadius: 16, elevation: 10 },
-  playPauseIcon: { color: '#FFF', fontSize: 36, marginLeft: 4 },
+  controlsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 10, marginBottom: 20 },
+  
+  secondaryBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center', opacity: 0.5 },
+  secondaryIconImage: { width: 22, height: 22, tintColor: '#FFFFFF' },
+  
+  // Highlight styles for active Shuffle / Repeat
+  activeBtn: { opacity: 1, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 20 },
+  
+  // Tiny overlay for the Repeat One mode
+  repeatOneBadge: { position: 'absolute', right: -6, top: -6, backgroundColor: '#FFFFFF', borderRadius: 7, width: 14, height: 14, justifyContent: 'center', alignItems: 'center' },
+  repeatOneText: { color: '#030303', fontSize: 9, fontWeight: 'bold', marginLeft: 0.5 },
+
+  primaryBtn: { width: 50, height: 50, justifyContent: 'center', alignItems: 'center' },
+  primaryIconImage: { width: 32, height: 32, tintColor: '#FFFFFF' },
+
+  playPauseBtn: { width: 72, height: 72, borderRadius: 36, backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center' },
+  playPauseImage: { width: 32, height: 32, tintColor: '#000000', marginLeft: 4 }, 
 });

@@ -65,18 +65,16 @@ export default function AlbumsRoute() {
     return Object.keys(groups).sort().map(key => ({ name: key, files: groups[key] }));
   }, [mediaFiles]);
 
-  const handleMediaPress = (item: LocalMedia) => {
+const handleMediaPress = (item: LocalMedia) => {
     if (item.type === 'video') {
-      // Open the full-screen Video Player Modal
       setActiveVideo(item);
     } else {
-      // Trigger global background audio playback (Mini-Player handles the UI)
       if (globalActiveAudio?.id !== item.id) {
-        playMedia(item);
+        // Pass the activeAlbum.files array so skipping stays within the album!
+        playMedia(item, activeAlbum?.files || []);
       }
     }
   };
-
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       

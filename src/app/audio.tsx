@@ -36,13 +36,12 @@ export default function AudioRoute() {
   
   const { activeMedia, playMedia } = useAudioPlayback();
 
-  const handlePlay = (item: LocalMedia) => {
-    // Just trigger playback. The MiniPlayer will handle the rest!
+ const handlePlay = (item: LocalMedia) => {
     if (activeMedia?.id !== item.id) {
-      playMedia(item);
+      // Pass the audioFiles array as the context playlist!
+      playMedia(item, audioFiles);
     }
   };
-
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <View style={styles.header}>

@@ -1,28 +1,32 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet, Modal, ScrollView } from 'react-native';
+import { View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context'; 
-import Video from 'react-native-video';
 import { useMedia } from '../components/MediaProvider';
+import { useAudioPlayback } from '../components/AudioPlaybackProvider';
 import { LocalMedia } from '../types';
+
+// Import our custom native UI components
+import { AudioArtworkImage } from '../components/AudioArtwork';
+import VideoPlayerModal from '../components/VideoPlayerModal';
 
 type FilterType = 'all' | 'audio' | 'video';
 
 export default function SearchRoute() {
   const { mediaFiles } = useMedia();
+  const { playMedia } = useAudioPlayback(); // Connect to global audio queue
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
-  const [activeMedia, setActiveMedia] = useState<LocalMedia | null>(null);
+  const [activeVideo, setActiveVideo] = useState<LocalMedia | null>(null);
 
-  // Instantly filter by text query AND the selected media type (All/Audio/Video)
+  // Instantly filter by text query AND the selected media type
   const filteredMedia = useMemo(() => {
     let results = mediaFiles;
 
-    // Apply type filter
     if (activeFilter !== 'all') {
       results = results.filter(file => file.type === activeFilter);
     }
 
-    // Apply text search
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       results = results.filter(file => 
@@ -41,6 +45,17 @@ export default function SearchRoute() {
     return `${Math.floor(totalSeconds / 60)}:${(totalSeconds % 60).toString().padStart(2, '0')}`;
   };
 
+  const handleMediaPress = (item: LocalMedia) => {
+    if (item.type === 'video') {
+      // Open the custom Video Player Modal
+      setActiveVideo(item);
+    } else {
+      // Play audio and pass only the audio search results as the new queue!
+      const audioQueue = filteredMedia.filter(m => m.type === 'audio');
+      playMedia(item, audioQueue);
+    }
+  };
+
   const renderFilterChip = (label: string, value: FilterType) => {
     const isActive = activeFilter === value;
     return (
@@ -57,16 +72,27 @@ export default function SearchRoute() {
   };
 
   const renderMediaItem = ({ item }: { item: LocalMedia }) => (
-    <TouchableOpacity activeOpacity={0.7} style={styles.mediaItem} onPress={() => setActiveMedia(item)}>
-      <View style={[styles.mediaIcon, item.type === 'video' ? styles.videoIcon : styles.audioIcon]}>
-        <Text style={styles.mediaIconText}>{item.type === 'video' ? '▶' : '🎵'}</Text>
-      </View>
+    <TouchableOpacity activeOpacity={0.7} style={styles.mediaItem} onPress={() => handleMediaPress(item)}>
+      
+      {/* Show Native Artwork for Audio, standard icon for Video */}
+      {item.type === 'audio' ? (
+        <AudioArtworkImage uri={item.uri} size={48} style={styles.artworkImage} />
+      ) : (
+        <View style={styles.videoIcon}>
+          <Text style={styles.mediaIconText}>▶</Text>
+        </View>
+      )}
+
       <View style={styles.mediaDetails}>
         <Text style={styles.mediaTitle} numberOfLines={1}>{item.title}</Text>
         <Text style={styles.mediaSubtitle} numberOfLines={1}>
-          {item.artist || 'Unknown Artist'}  •  {item.album || 'Unknown Album'}
+          {item.type === 'video' 
+            ? 'Video File' 
+            : `${item.artist || 'Unknown Artist'}  •  ${item.album || 'Unknown Album'}`
+          }
         </Text>
       </View>
+      
       <View style={styles.durationBadge}>
         <Text style={styles.mediaDuration}>{formatDuration(item.duration)}</Text>
       </View>
@@ -122,30 +148,11 @@ export default function SearchRoute() {
         }
       />
 
-      {/* Unified Media Player Modal */}
-      <Modal visible={!!activeMedia} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setActiveMedia(null)}>
-        <SafeAreaView style={styles.modalContainer} edges={['top', 'bottom']}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle} numberOfLines={1}>{activeMedia?.title}</Text>
-            <TouchableOpacity onPress={() => setActiveMedia(null)} style={styles.closeButton}>
-              <Text style={styles.closeButtonText}>Done</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.playerWrapper}>
-            {activeMedia && (
-              <Video 
-                source={{ uri: activeMedia.uri }} 
-                style={styles.videoView} 
-                controls={true}
-                resizeMode="contain" 
-                ignoreSilentSwitch="ignore" 
-                playInBackground={activeMedia.type === 'audio'}
-                audioOnly={activeMedia.type === 'audio'} 
-              />
-            )}
-          </View>
-        </SafeAreaView>
-      </Modal>
+      {/* Advanced Video Player Modal */}
+      <VideoPlayerModal 
+        media={activeVideo} 
+        onClose={() => setActiveVideo(null)} 
+      />
     </SafeAreaView>
   );
 }
@@ -169,14 +176,13 @@ const styles = StyleSheet.create({
   filterTextActive: { color: '#FFFFFF' },
 
   // List & Items
-  listPadding: { paddingHorizontal: 20, paddingBottom: 30, paddingTop: 10 },
+  listPadding: { paddingHorizontal: 20, paddingBottom: 100, paddingTop: 10 }, // Extra padding for MiniPlayer
   mediaItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 12, borderRadius: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 10, elevation: 2, borderWidth: 1, borderColor: 'rgba(0,0,0,0.02)' },
   
-  // Modern Squircle Icons
-  mediaIcon: { width: 48, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
-  videoIcon: { backgroundColor: '#111827' },
-  audioIcon: { backgroundColor: '#4F46E5' },
-  mediaIconText: { color: '#FFF', fontSize: 18, marginLeft: 2 },
+  // Media Icons / Artwork
+  artworkImage: { width: 48, height: 48, borderRadius: 12, marginRight: 14 },
+  videoIcon: { width: 48, height: 48, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 14, backgroundColor: '#111827' },
+  mediaIconText: { color: '#FFF', fontSize: 18, marginLeft: 4 },
   
   mediaDetails: { flex: 1, marginRight: 10, justifyContent: 'center' },
   mediaTitle: { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 4, letterSpacing: -0.2 },
@@ -191,13 +197,4 @@ const styles = StyleSheet.create({
   emptyIcon: { fontSize: 36 },
   emptyTitle: { fontSize: 20, fontWeight: '800', color: '#111827', marginBottom: 8 },
   emptyText: { fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 22 },
-
-  // Modal & Player UI
-  modalContainer: { flex: 1, backgroundColor: '#000' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingTop: 20, backgroundColor: '#111' },
-  modalTitle: { color: '#FFF', fontSize: 16, fontWeight: '600', flex: 1, marginRight: 16 },
-  closeButton: { backgroundColor: 'rgba(255,255,255,0.15)', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20 },
-  closeButtonText: { color: '#FFF', fontWeight: '600', fontSize: 14 },
-  playerWrapper: { flex: 1, justifyContent: 'center', backgroundColor: '#000' },
-  videoView: { width: '100%', height: '100%' }, 
 });
