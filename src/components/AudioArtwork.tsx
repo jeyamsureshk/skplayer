@@ -40,7 +40,7 @@ export const AudioArtworkImage = memo(({ uri, size = 56, style }: AudioArtworkPr
     return (
       <Image 
         source={{ uri: imageUri }} 
-        style={[{ width: size, height: size, borderRadius: size * 0.2 }, style]} 
+        style={[{ width: size, height: size, borderRadius: size * 0.09 }, style]} 
         resizeMode="cover" 
       />
     );

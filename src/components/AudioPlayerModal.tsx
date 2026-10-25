@@ -202,7 +202,7 @@ export default function AudioPlayerModal({ visible, onClose }: AudioPlayerModalP
         
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Image source={require('@/assets/images/tabIcons/arrowd.png')} style={styles.headerIconImage} resizeMode="contain" />
+            <Image source={require('@/assets/images/tabIcons/arrowd.png')} style={[styles.headerIconImage, { transform: [{ rotate: '180deg' }] }]} resizeMode="contain" />
           </TouchableOpacity>
           <Text style={styles.headerLabel}>Playing from your library</Text>
           <View style={styles.headerSpacer} />

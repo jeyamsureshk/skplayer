@@ -20,6 +20,7 @@ export default function SearchRoute() {
   const [activeVideo, setActiveVideo] = useState<LocalMedia | null>(null);
 
   // Instantly filter by text query AND the selected media type
+// Instantly filter and sort audio files to appear first
   const filteredMedia = useMemo(() => {
     let results = mediaFiles;
 
@@ -37,7 +38,12 @@ export default function SearchRoute() {
       );
     }
 
-    return results;
+    // Sort to place audio files first when viewing mixed results
+    return [...results].sort((a, b) => {
+      if (a.type === 'audio' && b.type !== 'audio') return -1;
+      if (b.type === 'audio' && a.type !== 'audio') return 1;
+      return 0;
+    });
   }, [searchQuery, activeFilter, mediaFiles]);
 
   const formatDuration = (ms: number) => {

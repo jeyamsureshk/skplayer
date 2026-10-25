@@ -25,14 +25,14 @@ export default function RootLayout() {
           indicatorColor={colors.backgroundElement}
           labelStyle={{ selected: { color: colors.text } }}
         >
-          <NativeTabs.Trigger name="videos">
-            <NativeTabs.Trigger.Label>Videos</NativeTabs.Trigger.Label>
-            <NativeTabs.Trigger.Icon src={require('@/assets/images/tabIcons/video.png')} renderingMode="template" />
-          </NativeTabs.Trigger>
-
           <NativeTabs.Trigger name="audio">
             <NativeTabs.Trigger.Label>Audio</NativeTabs.Trigger.Label>
             <NativeTabs.Trigger.Icon src={require('@/assets/images/tabIcons/audio.png')} renderingMode="template" />
+          </NativeTabs.Trigger>
+
+          <NativeTabs.Trigger name="videos">
+            <NativeTabs.Trigger.Label>Videos</NativeTabs.Trigger.Label>
+            <NativeTabs.Trigger.Icon src={require('@/assets/images/tabIcons/video.png')} renderingMode="template" />
           </NativeTabs.Trigger>
 
           <NativeTabs.Trigger name="search">
