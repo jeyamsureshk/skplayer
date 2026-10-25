@@ -12,6 +12,7 @@ const { AudioArtwork } = NativeModules;
 interface AudioPlaybackContextValue {
   activeMedia: LocalMedia | null;
   currentTime: number;
+  position: number;
   duration: number;
   isPlaying: boolean;
   isShuffle: boolean;
@@ -19,11 +20,12 @@ interface AudioPlaybackContextValue {
   playMedia: (media: LocalMedia, queue?: LocalMedia[]) => void;
   togglePlayback: () => void;
   close: () => void;
-  seekTo: (seconds: number) => Promise<void>;
+  seekTo: (time: number) => void; 
   skipToNext: () => void;
   skipToPrevious: () => void;
   toggleShuffle: () => void;
   toggleRepeat: () => void;
+  setVolume: (volume: number) => void; // <-- ADDED: Volume control
 }
 
 const AudioPlaybackContext = createContext<AudioPlaybackContextValue | null>(null);
@@ -62,19 +64,16 @@ export function AudioPlaybackProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // Updated: Now async to handle native artwork fetching
   const loadTrack = useCallback(async (media: LocalMedia) => {
     player.replace(media.uri);
     player.play();
 
-    // Step 1: Instantly show the notification with text so there's zero UI lag
     player.setActiveForLockScreen(true, {
       title: media.title,
       artist: media.artist || 'Unknown Artist',
       albumTitle: media.album || 'Unknown Album',
     });
 
-    // Step 2: Fetch the artwork in the background and update the lock screen
     if (AudioArtwork) {
       try {
         const artworkPath = await AudioArtwork.getArtwork(media.uri);
@@ -83,7 +82,7 @@ export function AudioPlaybackProvider({ children }: { children: ReactNode }) {
             title: media.title,
             artist: media.artist || 'Unknown Artist',
             albumTitle: media.album || 'Unknown Album',
-            artworkUrl: artworkPath, // Injects your native file:// path!
+            artworkUrl: artworkPath, 
           });
         }
       } catch (error) {
@@ -142,7 +141,7 @@ export function AudioPlaybackProvider({ children }: { children: ReactNode }) {
   const skipToPrevious = useCallback(() => {
     if (activeQueue.length === 0) return;
     
-    if (status.currentTime > 3) {
+    if (status.currentTime > 3000) { // Fix: Check milliseconds instead of 3
       player.seekTo(0);
       return;
     }
@@ -199,13 +198,25 @@ export function AudioPlaybackProvider({ children }: { children: ReactNode }) {
     setCurrentIndex(-1);
   };
 
-  const seekTo = (seconds: number) => player.seekTo(seconds);
+  const seekTo = (time: number) => {
+    if (player && typeof player.seekTo === 'function') {
+      player.seekTo(time);
+    }
+  };
+
+  // <-- ADDED: Function to control native audio volume (0.0 to 1.0)
+  const setVolume = useCallback((volumeLevel: number) => {
+    if (player) {
+      player.volume = volumeLevel; 
+    }
+  }, [player]);
 
   return (
     <AudioPlaybackContext.Provider
       value={{
         activeMedia,
         currentTime: status.currentTime,
+        position: status.currentTime,
         duration: status.duration,
         isPlaying: status.playing,
         isShuffle,
@@ -217,7 +228,8 @@ export function AudioPlaybackProvider({ children }: { children: ReactNode }) {
         skipToNext,
         skipToPrevious,
         toggleShuffle,
-        toggleRepeat
+        toggleRepeat,
+        setVolume // <-- Exported to context
       }}
     >
       {children}

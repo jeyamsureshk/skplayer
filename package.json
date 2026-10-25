@@ -12,6 +12,7 @@
     "expo": "~57.0.31",
     "expo-asset": "~57.0.20",
     "expo-audio": "~57.0.5",
+    "expo-blur": "~57.0.3",
     "expo-brightness": "~57.0.2",
     "expo-constants": "~57.0.22",
     "expo-dev-client": "~57.0.20",

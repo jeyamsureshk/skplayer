@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, Dimensions, Image } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Dimensions, Image, PanResponder } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
 import { useAudioPlayback } from './AudioPlaybackProvider';
 import { AudioArtworkImage } from './AudioArtwork';
 
@@ -14,35 +16,193 @@ interface AudioPlayerModalProps {
 }
 
 const formatDuration = (seconds: number) => {
-  if (isNaN(seconds) || seconds < 0) return '0:00';
-  return `${Math.floor(seconds / 60)}:${(Math.floor(seconds) % 60).toString().padStart(2, '0')}`;
+  if (isNaN(seconds) || seconds < 0) return '00:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds) % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
 export default function AudioPlayerModal({ visible, onClose }: AudioPlayerModalProps) {
   const { 
     activeMedia, currentTime, duration, isPlaying, 
     togglePlayback, seekTo, skipToNext, skipToPrevious,
-    isShuffle, repeatMode, toggleShuffle, toggleRepeat 
+    isShuffle, repeatMode, toggleShuffle, toggleRepeat,
+    setVolume: setSystemVolume
   } = useAudioPlayback();
   
-  const [isSeeking, setIsSeeking] = useState(false);
-  const [seekTime, setSeekTime] = useState(0);
+  const [isSliderSeeking, setIsSliderSeeking] = useState(false);
+  const [sliderSeekTime, setSliderSeekTime] = useState(0);
+  
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [isOptimistic, setIsOptimistic] = useState(false);
+  const [scrubProgress, setScrubProgress] = useState(0); 
+  
+  const [isAdjustingVolume, setIsAdjustingVolume] = useState(false);
+  const [volume, setVolume] = useState(1); 
+  const [isLiked, setIsLiked] = useState(false);
+
+  const safeCurrentTime = Number(currentTime) || 0;
+  const safeDuration = Number(duration) || 1;
+
+  const durationRef = useRef(safeDuration);
+  const positionRef = useRef(safeCurrentTime);
+  const seekToRef = useRef(seekTo);
+  const togglePlaybackRef = useRef(togglePlayback);
+  const setSystemVolumeRef = useRef(setSystemVolume);
+  
+  const activeGestureRef = useRef<'horizontal' | 'vertical' | null>(null);
+  const startProgress = useRef(0);
+  const currentScrubRef = useRef(0);
+  const startVolumeRef = useRef(1);
+  const currentVolumeRef = useRef(1);
+  
+  const lastTapRef = useRef(0);
+  const seekTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    durationRef.current = safeDuration;
+    positionRef.current = safeCurrentTime;
+    seekToRef.current = seekTo;
+    togglePlaybackRef.current = togglePlayback;
+    setSystemVolumeRef.current = setSystemVolume;
+  }, [safeCurrentTime, safeDuration, seekTo, togglePlayback, setSystemVolume]);
+
+  useEffect(() => {
+    return () => {
+      if (seekTimeout.current) clearTimeout(seekTimeout.current);
+    };
+  }, []);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true, 
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dx) > 10 || Math.abs(gestureState.dy) > 10;
+      },
+      onPanResponderGrant: () => {
+        if (seekTimeout.current) clearTimeout(seekTimeout.current);
+        activeGestureRef.current = null; 
+        
+        startProgress.current = (positionRef.current / durationRef.current) * 100;
+        currentScrubRef.current = startProgress.current;
+        setScrubProgress(startProgress.current);
+        
+        startVolumeRef.current = currentVolumeRef.current;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (!activeGestureRef.current) {
+          if (Math.abs(gestureState.dx) > Math.abs(gestureState.dy)) {
+            activeGestureRef.current = 'horizontal';
+            setIsScrubbing(true);
+            setIsOptimistic(true);
+          } else {
+            activeGestureRef.current = 'vertical';
+            setIsAdjustingVolume(true);
+          }
+        }
+
+        if (activeGestureRef.current === 'horizontal') {
+          const deltaPercentage = (gestureState.dx / ARTWORK_SIZE) * 100;
+          const newProgress = Math.max(0, Math.min(100, startProgress.current + deltaPercentage));
+          
+          currentScrubRef.current = newProgress;
+          setScrubProgress(newProgress);
+        }
+        
+        if (activeGestureRef.current === 'vertical') {
+          const deltaVolume = -(gestureState.dy / (ARTWORK_SIZE / 1.5)); 
+          let newVolume = startVolumeRef.current + deltaVolume;
+          newVolume = Math.max(0, Math.min(newVolume, 1));
+          
+          currentVolumeRef.current = newVolume;
+          setVolume(newVolume);
+
+          if (setSystemVolumeRef.current) {
+            setSystemVolumeRef.current(newVolume);
+          }
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (activeGestureRef.current === 'horizontal') {
+          setIsScrubbing(false);
+          if (seekToRef.current) {
+            const exactTime = (currentScrubRef.current / 100) * durationRef.current;
+            seekToRef.current(exactTime);
+          }
+          
+          seekTimeout.current = setTimeout(() => {
+            setIsOptimistic(false);
+          }, 1200); 
+        } 
+        else if (activeGestureRef.current === 'vertical') {
+          setIsAdjustingVolume(false);
+        } 
+        else {
+          if (Math.abs(gestureState.dx) < 10 && Math.abs(gestureState.dy) < 10) {
+            const now = Date.now();
+            const DOUBLE_TAP_DELAY = 300; 
+            
+            if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
+              togglePlaybackRef.current(); 
+              lastTapRef.current = 0; 
+            } else {
+              lastTapRef.current = now; 
+            }
+          }
+        }
+        activeGestureRef.current = null;
+      },
+      onPanResponderTerminate: () => {
+        setIsScrubbing(false);
+        setIsAdjustingVolume(false);
+        activeGestureRef.current = null;
+        
+        seekTimeout.current = setTimeout(() => {
+          setIsOptimistic(false);
+        }, 1200);
+      },
+    })
+  ).current;
+
+  useEffect(() => {
+    if (!activeMedia) return;
+    const loadLikedState = async () => {
+      try {
+        const storedValue = await AsyncStorage.getItem(`@liked_track_${activeMedia.id}`);
+        setIsLiked(storedValue === 'true');
+      } catch (error) {
+        console.error('Failed to load liked state:', error);
+      }
+    };
+    loadLikedState();
+  }, [activeMedia]);
+
+  const toggleLike = async () => {
+    if (!activeMedia) return;
+    try {
+      const newLikedState = !isLiked;
+      setIsLiked(newLikedState);
+      await AsyncStorage.setItem(`@liked_track_${activeMedia.id}`, newLikedState.toString());
+    } catch (error) {
+      console.error('Failed to save liked state:', error);
+    }
+  };
 
   if (!activeMedia) return null;
 
-  const displayTime = isSeeking ? seekTime : currentTime;
+  const currentPercentage = Math.max(0, Math.min(100, (safeCurrentTime / safeDuration) * 100));
+  const activePercentage = isOptimistic ? scrubProgress : currentPercentage;
+  const optimisticScrubTime = (activePercentage / 100) * safeDuration;
+  
+  const displayTime = isOptimistic ? optimisticScrubTime : (isSliderSeeking ? sliderSeekTime : safeCurrentTime);
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <SafeAreaView style={styles.modalContainer} edges={['top', 'bottom']}>
         
-<View style={styles.header}>
+        <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Image 
-              source={require('@/assets/images/tabIcons/arrowd.png')} 
-              style={styles.headerIconImage} 
-              resizeMode="contain" 
-            />
+            <Image source={require('@/assets/images/tabIcons/arrowd.png')} style={styles.headerIconImage} resizeMode="contain" />
           </TouchableOpacity>
           <Text style={styles.headerLabel}>Playing from your library</Text>
           <View style={styles.headerSpacer} />
@@ -50,8 +210,29 @@ export default function AudioPlayerModal({ visible, onClose }: AudioPlayerModalP
         
         <View style={styles.content}>
           
-          <View style={styles.artworkContainer}>
-            <AudioArtworkImage uri={activeMedia.uri} size={ARTWORK_SIZE} style={styles.artworkImage} />
+          <View style={styles.artworkContainer} {...panResponder.panHandlers}>
+            
+            <View style={styles.imageWrapper}>
+              <AudioArtworkImage 
+                key={activeMedia.id || activeMedia.uri} 
+                uri={activeMedia.uri} 
+                size={ARTWORK_SIZE} 
+                style={styles.artworkImage} 
+              />
+            </View>
+
+            {/* FIX: Moved gestureOverlay OUTSIDE of imageWrapper to prevent Android clipping */}
+            {isAdjustingVolume && (
+              <View style={styles.gestureOverlay} pointerEvents="none">
+                <Ionicons 
+                  name={volume === 0 ? "volume-mute" : volume > 0.5 ? "volume-high" : "volume-low"} 
+                  size={50} 
+                  color="#FFF" 
+                />
+                <Text style={styles.overlayText}>{Math.round(volume * 100)}%</Text>
+              </View>
+            )}
+
           </View>
 
           <View style={styles.infoRow}>
@@ -59,12 +240,9 @@ export default function AudioPlayerModal({ visible, onClose }: AudioPlayerModalP
               <Text style={styles.title} numberOfLines={1}>{activeMedia.title}</Text>
               <Text style={styles.artist} numberOfLines={1}>{activeMedia.artist || 'Unknown Artist'}</Text>
             </View>
-            <TouchableOpacity style={styles.actionButton}>
-              <Image 
-                source={require('@/assets/images/tabIcons/like.png')} 
-                style={styles.actionIconImage} 
-                resizeMode="contain" 
-              />
+            
+            <TouchableOpacity style={styles.actionButton} onPress={toggleLike} activeOpacity={0.6}>
+              <Ionicons name={isLiked ? "heart" : "heart-outline"} size={28} color={isLiked ? "#FF4444" : "#FFFFFF"} />
             </TouchableOpacity>
           </View>
 
@@ -72,73 +250,47 @@ export default function AudioPlayerModal({ visible, onClose }: AudioPlayerModalP
             <Slider
               style={styles.slider}
               minimumValue={0}
-              maximumValue={duration > 0 ? duration : 1}
-              value={displayTime}
+              maximumValue={safeDuration > 0 ? safeDuration : 1}
+              value={displayTime} 
               minimumTrackTintColor="#FFFFFF"
               maximumTrackTintColor="rgba(255,255,255,0.2)"
               thumbTintColor="#FFFFFF"
               onSlidingStart={() => {
-                setIsSeeking(true);
-                setSeekTime(currentTime);
+                setIsSliderSeeking(true);
+                setSliderSeekTime(safeCurrentTime);
               }}
-              onValueChange={(val) => setSeekTime(val)}
-              onSlidingComplete={async (val) => {
-                await seekTo(val);
-                setIsSeeking(false);
+              onValueChange={(val) => setSliderSeekTime(val)}
+              onSlidingComplete={(val) => {
+                seekTo(val);
+                setIsSliderSeeking(false);
               }}
             />
             <View style={styles.timeRow}>
               <Text style={styles.timeText}>{formatDuration(displayTime)}</Text>
-              <Text style={styles.timeText}>{formatDuration(duration)}</Text> 
+              <Text style={styles.timeText}>{formatDuration(safeDuration)}</Text> 
             </View>
           </View>
 
-          {/* Controls Row with Custom Images */}
           <View style={styles.controlsRow}>
-            {/* Shuffle Button */}
             <TouchableOpacity onPress={toggleShuffle} style={[styles.secondaryBtn, isShuffle && styles.activeBtn]}>
-              <Image 
-                source={require('@/assets/images/tabIcons/shuffle.png')} 
-                style={styles.secondaryIconImage} 
-                resizeMode="contain"
-              />
+              <Image source={require('@/assets/images/tabIcons/shuffle.png')} style={styles.secondaryIconImage} resizeMode="contain" />
             </TouchableOpacity>
 
-           {/* Skip Back */}
             <TouchableOpacity onPress={skipToPrevious} style={styles.primaryBtn}>
-              <Image 
-                source={require('@/assets/images/tabIcons/next.png')} 
-                style={[styles.primaryIconImage, { transform: [{ rotate: '180deg' }] }]} 
-                resizeMode="contain"
-              />
+              <Image source={require('@/assets/images/tabIcons/next.png')} style={[styles.primaryIconImage, { transform: [{ rotate: '180deg' }] }]} resizeMode="contain" />
             </TouchableOpacity>
 
             <TouchableOpacity onPress={togglePlayback} style={styles.playPauseBtn} activeOpacity={0.8}>
-              <Image 
-                source={isPlaying ? require('@/assets/images/tabIcons/pause.png') : require('@/assets/images/tabIcons/play.png')} 
-                style={styles.playPauseImage} 
-                resizeMode="contain"
-              />
+              <Image source={isPlaying ? require('@/assets/images/tabIcons/pause.png') : require('@/assets/images/tabIcons/play.png')} style={styles.playPauseImage} resizeMode="contain" />
             </TouchableOpacity>
 
-            {/* Skip Forward */}
             <TouchableOpacity onPress={skipToNext} style={styles.primaryBtn}>
-              <Image 
-                source={require('@/assets/images/tabIcons/next.png')} 
-                style={styles.primaryIconImage} 
-                resizeMode="contain"
-              />
+              <Image source={require('@/assets/images/tabIcons/next.png')} style={styles.primaryIconImage} resizeMode="contain" />
             </TouchableOpacity>
 
-            {/* Repeat Button */}
             <TouchableOpacity onPress={toggleRepeat} style={[styles.secondaryBtn, repeatMode !== 'off' && styles.activeBtn]}>
               <View>
-                <Image 
-                  source={require('@/assets/images/tabIcons/repeat.png')} 
-                  style={styles.secondaryIconImage} 
-                  resizeMode="contain"
-                />
-                {/* Tiny badge for "Repeat One" state */}
+                <Image source={require('@/assets/images/tabIcons/repeat.png')} style={styles.secondaryIconImage} resizeMode="contain" />
                 {repeatMode === 'one' && (
                   <View style={styles.repeatOneBadge}>
                     <Text style={styles.repeatOneText}>1</Text>
@@ -158,21 +310,27 @@ const styles = StyleSheet.create({
   modalContainer: { flex: 1, backgroundColor: '#030303' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 10, paddingBottom: 20 },
   closeButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'flex-start' },
-headerIconImage: { width: 28, height: 28, tintColor: '#FFFFFF' }, // <-- Added this
+  headerIconImage: { width: 28, height: 28, tintColor: '#FFFFFF' }, 
   headerLabel: { color: '#AAAAAA', fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, textAlign: 'center' },
   headerSpacer: { width: 40 }, 
 
   content: { flex: 1, paddingHorizontal: 24, paddingBottom: 40, justifyContent: 'space-between' },
   
-  artworkContainer: { width: '100%', alignItems: 'center', marginBottom: 30, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 15 },
-  artworkImage: { width: ARTWORK_SIZE, height: ARTWORK_SIZE, borderRadius: 8 }, 
+  // FIX: Setup artworkContainer to perfectly hold the absolute overlay
+  artworkContainer: { width: ARTWORK_SIZE, height: ARTWORK_SIZE, alignSelf: 'center', marginBottom: 30, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 15, position: 'relative' },
+  
+  imageWrapper: { width: '100%', height: '100%', borderRadius: 8, overflow: 'hidden' },
+  artworkImage: { width: '100%', height: '100%' }, 
 
+  // FIX: Elevated zIndex ensures it overlays the native image
+  gestureOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 8, justifyContent: 'center', alignItems: 'center', zIndex: 9999, elevation: 20 },
+  overlayText: { color: '#FFF', fontSize: 32, fontWeight: 'bold', fontVariant: ['tabular-nums'], marginTop: 8 },
+  
   infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 25 },
   textColumn: { flex: 1, paddingRight: 20 },
   title: { color: '#FFFFFF', fontSize: 26, fontWeight: '800', marginBottom: 4, letterSpacing: -0.5 },
   artist: { color: '#AAAAAA', fontSize: 18, fontWeight: '500' },
   actionButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'flex-end' },
-actionIconImage: { width: 26, height: 26, tintColor: '#FFFFFF' }, // <-- Added this
 
   progressContainer: { marginBottom: 20 },
   slider: { width: '100%', height: 40, marginHorizontal: 0 },
@@ -183,11 +341,7 @@ actionIconImage: { width: 26, height: 26, tintColor: '#FFFFFF' }, // <-- Added t
   
   secondaryBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center', opacity: 0.5 },
   secondaryIconImage: { width: 22, height: 22, tintColor: '#FFFFFF' },
-  
-  // Highlight styles for active Shuffle / Repeat
   activeBtn: { opacity: 1, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 20 },
-  
-  // Tiny overlay for the Repeat One mode
   repeatOneBadge: { position: 'absolute', right: -6, top: -6, backgroundColor: '#FFFFFF', borderRadius: 7, width: 14, height: 14, justifyContent: 'center', alignItems: 'center' },
   repeatOneText: { color: '#030303', fontSize: 9, fontWeight: 'bold', marginLeft: 0.5 },
 
