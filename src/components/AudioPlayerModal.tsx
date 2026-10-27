@@ -7,6 +7,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAudioPlayback } from './AudioPlaybackProvider';
 import { AudioArtworkImage } from './AudioArtwork';
 
+// 1. Import the Playlist Modal we built earlier
+import AddToPlaylistModal from './AddToPlaylistModal';
+
 const { width } = Dimensions.get('window');
 const ARTWORK_SIZE = width - 48;
 
@@ -40,6 +43,9 @@ export default function AudioPlayerModal({ visible, onClose }: AudioPlayerModalP
   const [isAdjustingVolume, setIsAdjustingVolume] = useState(false);
   const [volume, setVolume] = useState(1); 
   const [isLiked, setIsLiked] = useState(false);
+
+  // 2. Add state to control the Playlist Modal
+  const [isPlaylistModalVisible, setIsPlaylistModalVisible] = useState(false);
 
   const safeCurrentTime = Number(currentTime) || 0;
   const safeDuration = Number(duration) || 1;
@@ -202,7 +208,7 @@ export default function AudioPlayerModal({ visible, onClose }: AudioPlayerModalP
         
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Image source={require('@/assets/images/tabIcons/arrowd.png')} style={[styles.headerIconImage, { transform: [{ rotate: '180deg' }] }]} resizeMode="contain" />
+            <Ionicons name="chevron-down" size={28} color="#ffffff" />
           </TouchableOpacity>
           <Text style={styles.headerLabel}>Playing from your library</Text>
           <View style={styles.headerSpacer} />
@@ -211,7 +217,6 @@ export default function AudioPlayerModal({ visible, onClose }: AudioPlayerModalP
         <View style={styles.content}>
           
           <View style={styles.artworkContainer} {...panResponder.panHandlers}>
-            
             <View style={styles.imageWrapper}>
               <AudioArtworkImage 
                 key={activeMedia.id || activeMedia.uri} 
@@ -221,7 +226,6 @@ export default function AudioPlayerModal({ visible, onClose }: AudioPlayerModalP
               />
             </View>
 
-            {/* FIX: Moved gestureOverlay OUTSIDE of imageWrapper to prevent Android clipping */}
             {isAdjustingVolume && (
               <View style={styles.gestureOverlay} pointerEvents="none">
                 <Ionicons 
@@ -232,7 +236,6 @@ export default function AudioPlayerModal({ visible, onClose }: AudioPlayerModalP
                 <Text style={styles.overlayText}>{Math.round(volume * 100)}%</Text>
               </View>
             )}
-
           </View>
 
           <View style={styles.infoRow}>
@@ -241,9 +244,16 @@ export default function AudioPlayerModal({ visible, onClose }: AudioPlayerModalP
               <Text style={styles.artist} numberOfLines={1}>{activeMedia.artist || 'Unknown Artist'}</Text>
             </View>
             
-            <TouchableOpacity style={styles.actionButton} onPress={toggleLike} activeOpacity={0.6}>
-              <Ionicons name={isLiked ? "heart" : "heart-outline"} size={28} color={isLiked ? "#FF4444" : "#FFFFFF"} />
-            </TouchableOpacity>
+            {/* 3. Action Buttons Row: Add to Playlist + Like */}
+            <View style={styles.actionButtonsRow}>
+              <TouchableOpacity style={styles.actionButton} onPress={() => setIsPlaylistModalVisible(true)}>
+                <Ionicons name="add-circle-outline" size={28} color="#FFFFFF" />
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.actionButton} onPress={toggleLike} activeOpacity={0.6}>
+                <Ionicons name={isLiked ? "heart" : "heart-outline"} size={28} color={isLiked ? "#FF4444" : "#FFFFFF"} />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.progressContainer}>
@@ -301,6 +311,14 @@ export default function AudioPlayerModal({ visible, onClose }: AudioPlayerModalP
           </View>
 
         </View>
+        
+        {/* 4. Mount the Playlist Modal */}
+        <AddToPlaylistModal 
+          visible={isPlaylistModalVisible} 
+          mediaItem={activeMedia} 
+          onClose={() => setIsPlaylistModalVisible(false)} 
+        />
+        
       </SafeAreaView>
     </Modal>
   );
@@ -310,27 +328,27 @@ const styles = StyleSheet.create({
   modalContainer: { flex: 1, backgroundColor: '#030303' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 10, paddingBottom: 20 },
   closeButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'flex-start' },
-  headerIconImage: { width: 28, height: 28, tintColor: '#FFFFFF' }, 
   headerLabel: { color: '#AAAAAA', fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, textAlign: 'center' },
   headerSpacer: { width: 40 }, 
 
   content: { flex: 1, paddingHorizontal: 24, paddingBottom: 40, justifyContent: 'space-between' },
   
-  // FIX: Setup artworkContainer to perfectly hold the absolute overlay
   artworkContainer: { width: ARTWORK_SIZE, height: ARTWORK_SIZE, alignSelf: 'center', marginBottom: 30, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 15, position: 'relative' },
   
   imageWrapper: { width: '100%', height: '100%', borderRadius: 8, overflow: 'hidden' },
   artworkImage: { width: '100%', height: '100%' }, 
 
-  // FIX: Elevated zIndex ensures it overlays the native image
   gestureOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 8, justifyContent: 'center', alignItems: 'center', zIndex: 9999, elevation: 20 },
   overlayText: { color: '#FFF', fontSize: 32, fontWeight: 'bold', fontVariant: ['tabular-nums'], marginTop: 8 },
   
   infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 25 },
-  textColumn: { flex: 1, paddingRight: 20 },
+  textColumn: { flex: 1, paddingRight: 10 },
   title: { color: '#FFFFFF', fontSize: 26, fontWeight: '800', marginBottom: 4, letterSpacing: -0.5 },
   artist: { color: '#AAAAAA', fontSize: 18, fontWeight: '500' },
-  actionButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'flex-end' },
+  
+  // FIX: Added actionButtonsRow to hold both icons neatly
+  actionButtonsRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  actionButton: { padding: 4 },
 
   progressContainer: { marginBottom: 20 },
   slider: { width: '100%', height: 40, marginHorizontal: 0 },
