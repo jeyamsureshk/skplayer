@@ -206,17 +206,21 @@ export default function AudioPlayerModal({ visible, onClose }: AudioPlayerModalP
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <SafeAreaView style={styles.modalContainer} edges={['top', 'bottom']}>
         
-        <View style={styles.header}>
+        {/* --- GLOBAL SWIPE BACKGROUND LAYER --- */}
+        {/* This sits exactly behind everything and perfectly catches all swipes and empty-space taps */}
+        <View style={StyleSheet.absoluteFill} {...panResponder.panHandlers} />
+        
+        <View style={styles.header} pointerEvents="box-none">
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
             <Ionicons name="chevron-down" size={28} color="#ffffff" />
           </TouchableOpacity>
-          <Text style={styles.headerLabel}>Playing from your library</Text>
-          <View style={styles.headerSpacer} />
+          <Text style={styles.headerLabel} pointerEvents="none">Playing from your library</Text>
+          <View style={styles.headerSpacer} pointerEvents="none" />
         </View>
         
-        <View style={styles.content}>
+        <View style={styles.content} pointerEvents="box-none">
           
-          <View style={styles.artworkContainer} {...panResponder.panHandlers}>
+          <View style={styles.artworkContainer} pointerEvents="none">
             <View style={styles.imageWrapper}>
               <AudioArtworkImage 
                 key={activeMedia.id || activeMedia.uri} 
@@ -238,14 +242,13 @@ export default function AudioPlayerModal({ visible, onClose }: AudioPlayerModalP
             )}
           </View>
 
-          <View style={styles.infoRow}>
-            <View style={styles.textColumn}>
+          <View style={styles.infoRow} pointerEvents="box-none">
+            <View style={styles.textColumn} pointerEvents="none">
               <Text style={styles.title} numberOfLines={1}>{activeMedia.title}</Text>
               <Text style={styles.artist} numberOfLines={1}>{activeMedia.artist || 'Unknown Artist'}</Text>
             </View>
             
-            {/* 3. Action Buttons Row: Add to Playlist + Like */}
-            <View style={styles.actionButtonsRow}>
+            <View style={styles.actionButtonsRow} pointerEvents="box-none">
               <TouchableOpacity style={styles.actionButton} onPress={() => setIsPlaylistModalVisible(true)}>
                 <Ionicons name="add-circle-outline" size={28} color="#FFFFFF" />
               </TouchableOpacity>
@@ -256,7 +259,7 @@ export default function AudioPlayerModal({ visible, onClose }: AudioPlayerModalP
             </View>
           </View>
 
-          <View style={styles.progressContainer}>
+          <View style={styles.progressContainer} pointerEvents="box-none">
             <Slider
               style={styles.slider}
               minimumValue={0}
@@ -275,13 +278,13 @@ export default function AudioPlayerModal({ visible, onClose }: AudioPlayerModalP
                 setIsSliderSeeking(false);
               }}
             />
-            <View style={styles.timeRow}>
+            <View style={styles.timeRow} pointerEvents="none">
               <Text style={styles.timeText}>{formatDuration(displayTime)}</Text>
               <Text style={styles.timeText}>{formatDuration(safeDuration)}</Text> 
             </View>
           </View>
 
-          <View style={styles.controlsRow}>
+          <View style={styles.controlsRow} pointerEvents="box-none">
             <TouchableOpacity onPress={toggleShuffle} style={[styles.secondaryBtn, isShuffle && styles.activeBtn]}>
               <Image source={require('@/assets/images/tabIcons/shuffle.png')} style={styles.secondaryIconImage} resizeMode="contain" />
             </TouchableOpacity>
